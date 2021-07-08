@@ -8,6 +8,10 @@
 
 - (void)pluginInitialize {
     NSLog(@"Starting Firebase Messaging plugin");
+
+    if(![FIRApp defaultApp]) {
+        [FIRApp configure];
+    }
 }
 
 - (void)requestPermission:(CDVInvokedUrlCommand *)command {
@@ -24,10 +28,10 @@
     UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
     UNAuthorizationOptions authOptions = (UNAuthorizationOptionAlert | UNAuthorizationOptionSound | UNAuthorizationOptionBadge);
     [center requestAuthorizationWithOptions:authOptions
-                          completionHandler:^(BOOL granted, NSError * _Nullable error) {
+                          completionHandler:^(BOOL granted, NSError* err) {
                               CDVPluginResult *pluginResult;
-                              if (error) {
-                                  pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:error.localizedDescription];
+                              if (err) {
+                                  pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:err.localizedDescription];
                               } else if (!granted) {
                                   pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Notifications permission is not granted"];
                               } else {
@@ -40,11 +44,18 @@
     [[UIApplication sharedApplication] registerForRemoteNotifications];
 }
 
-- (void)revokeToken:(CDVInvokedUrlCommand *)command {
-    [[FIRInstanceID instanceID] deleteIDWithHandler:^(NSError *  _Nullable error) {
+- (void)clearNotifications:(CDVInvokedUrlCommand *)command {
+    UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+    [center removeAllDeliveredNotifications];
+    CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
+    [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
+}
+
+- (void)deleteToken:(CDVInvokedUrlCommand *)command {
+    [[FIRMessaging messaging] deleteTokenWithCompletion:^(NSError * err) {
         CDVPluginResult *pluginResult;
-        if (error) {
-            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:error.localizedDescription];
+        if (err) {
+            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:err.localizedDescription];
         } else {
             pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
         }
@@ -56,18 +67,17 @@
     CDVPluginResult *pluginResult;
     NSString* type = [command.arguments objectAtIndex:0];
 
-    if (![type isKindOfClass:[NSString class]]) {
+    if ([type length] == 0) {
         NSString *fcmToken = [FIRMessaging messaging].FCMToken;
         if (fcmToken) {
             pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:fcmToken];
         } else {
-            [[FIRInstanceID instanceID] instanceIDWithHandler:^(FIRInstanceIDResult * _Nullable result,
-                                                                NSError * _Nullable error) {
+            [[FIRMessaging messaging] tokenWithCompletion:^(NSString * token, NSError * err) {
                 CDVPluginResult *pluginResult;
-                if (error) {
-                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:error.localizedDescription];
+                if (err) {
+                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:err.localizedDescription];
                 } else {
-                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:result.token];
+                    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:token];
                 }
                 [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
             }];
@@ -78,10 +88,15 @@
             if ([type isEqualToString:@"apns-buffer"]) {
                 pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsArrayBuffer:apnsToken];
             } else if ([type isEqualToString:@"apns-string"]) {
-                NSString* hexToken = [[apnsToken.description componentsSeparatedByCharactersInSet:[[NSCharacterSet alphanumericCharacterSet]invertedSet]]componentsJoinedByString:@""];
+                NSUInteger len = apnsToken.length;
+                const unsigned char *buffer = apnsToken.bytes;
+                NSMutableString *hexToken  = [NSMutableString stringWithCapacity:(len * 2)];
+                for (int i = 0; i < len; ++i) {
+                    [hexToken appendFormat:@"%02x", buffer[i]];
+                }
                 pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:hexToken];
             } else {
-                pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Invalid APNS token type argument"];
+                pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Invalid token type argument"];
             }
         } else {
             pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:nil];
@@ -115,10 +130,10 @@
     NSString* topic = [NSString stringWithFormat:@"%@", [command.arguments objectAtIndex:0]];
 
     [[FIRMessaging messaging] subscribeToTopic:topic
-                                    completion:^(NSError * _Nullable error) {
+                                    completion:^(NSError* err) {
                                         CDVPluginResult *pluginResult;
-                                        if (error != nil) {
-                                            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:error.localizedDescription];
+                                        if (err) {
+                                            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:err.localizedDescription];
                                         } else {
                                             pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
                                         }
@@ -130,10 +145,10 @@
     NSString* topic = [NSString stringWithFormat:@"%@", [command.arguments objectAtIndex:0]];
 
     [[FIRMessaging messaging] unsubscribeFromTopic:topic
-                                        completion:^(NSError * _Nullable error) {
+                                        completion:^(NSError* err) {
                                             CDVPluginResult *pluginResult;
-                                            if (error != nil) {
-                                                pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:error.localizedDescription];
+                                            if (err) {
+                                                pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:err.localizedDescription];
                                             } else {
                                                 pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
                                             }
@@ -178,7 +193,7 @@
 }
 
 - (void)sendToken:(NSString *)fcmToken {
-    if (self.tokenRefreshCallbackId != nil) {
+    if (self.tokenRefreshCallbackId) {
         CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
         [self.commandDelegate sendPluginResult:pluginResult callbackId:self.tokenRefreshCallbackId];
     }

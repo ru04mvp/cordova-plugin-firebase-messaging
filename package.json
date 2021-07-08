@@ -1,6 +1,6 @@
 {
   "name": "cordova-plugin-firebase-messaging",
-  "version": "3.0.0",
+  "version": "6.0.0",
   "description": "Cordova plugin for Firebase Messaging",
   "cordova": {
     "id": "cordova-plugin-firebase-messaging",
@@ -19,6 +19,7 @@
     "url": "https://github.com/chemerisuk/cordova-plugin-firebase-messaging/issues"
   },
   "homepage": "https://github.com/chemerisuk/cordova-plugin-firebase-messaging#readme",
+  "funding": "https://github.com/chemerisuk/cordova-plugin-firebase-messaging?sponsor=1",
   "keywords": [
     "cordova",
     "firebase",
@@ -31,7 +32,7 @@
     "cordova-ios"
   ],
   "scripts": {
-    "version": "replace -s 'version=\"(.+)(?=\">)' 'version=\"'$npm_package_version plugin.xml && git add plugin.xml",
+    "version": "perl -p -i -e 's/(version=)\"\\d+\\.\\d+\\.\\d+\"/$1\"'$npm_package_version'\"$2/' plugin.xml && git add plugin.xml",
     "postversion": "git push && git push --tags"
   }
 }
